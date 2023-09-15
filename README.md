@@ -1,4 +1,4 @@
-# openconnect
+# Install Ocserv - Openconnect
 
 ## Install 
 Test OS : Ubuntu 18 - 20 - 22
@@ -21,7 +21,7 @@ cd openconnect
 ansible-playbook -i inventory/hosts myproject.yml
 ```
 
-# Add User
+## Add User
 ```
 ansible-playbook -i inventory/hosts myproject.yml --tags add_user
 ```
