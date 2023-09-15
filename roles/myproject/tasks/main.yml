@@ -1,0 +1,187 @@
+- name: System details
+  debug: msg="{{ item }}"
+  with_items:
+    - "{{ ansible_distribution }}"
+    - "{{ ansible_distribution_version }}"
+    - "{{ ansible_distribution_major_version }}"
+  tags: test
+
+- name: --- replace ipv4_forward ---
+  replace:
+    path: /etc/sysctl.conf
+    regexp: '#net.ipv4.ip_forward=1'
+    replace: 'net.ipv4.ip_forward=1'
+    backup: yes
+  tags: ipv4_forward
+
+- name: --- apply changes use the following command or we can Restart on Linux Ubuntu ---
+  command: sysctl -p
+  register: test_nat
+  tags: forward_test
+
+- name: --- show message sysctl ---
+  debug:
+    msg: "{{test_nat.stdout}}"
+  tags: forward_test
+
+- name: --- OS update ---
+  apt:
+    update_cache: yes
+    force_apt_get: yes
+    cache_valid_time: 3600
+  register: update_test
+  tags: update_os
+
+- name: --- show message update ---
+  debug:
+    msg: "{{update_test}}"
+  tags: update_os
+
+- name: --- Install oserv [opencoonect server] ---
+  apt:
+    name: ocserv
+    update_cache: yes
+    state: present
+  tags: ocserv_install
+
+- name: --- ocserv status ---
+  command: systemctl status ocserv
+  register: ocserv_status
+  tags: ocserv_check
+
+- name: --- ocserv status message ---
+  debug:
+    msg: "{{ocserv_status.stdout}}"
+  tags: ocserv_check
+
+- name: --- Allow TCP/UDP ports in Ubuntu firewall ---
+  command: ufw allow 80,443/tcp
+  register: ufw_port_allow
+  tags: ufw_allow
+
+- name: --- ufw Allow port  message ---
+  debug:
+    msg: "{{ufw_port_allow.stdout}}"
+  tags: ufw_allow
+
+- name: --- template ocserv  ---
+  template:
+    src: ocserv.conf.j2
+    dest: /etc/ocserv/ocserv.conf
+    group: root
+    owner: root
+    force: yes
+    backup: yes
+  tags: temp_ocserv
+
+- name: --- Ocserv Restart ---
+  command: systemctl restart ocserv
+  tags: temp_ocserv
+
+- name: --- Install UFW---
+  apt:
+    name: ufw
+    update_cache: yes
+    state: present
+  register: ufw_install_msg
+  tags: ufw_install
+
+- name: --- ufw Install  message ---
+  debug:
+    msg: "{{ufw_install_msg}}"
+  tags: ufw_install
+
+- name: --- Allow all access to tcp port 22/443 ---
+  ufw:
+    rule: allow
+    port: '{{ item }}'
+    proto: tcp
+  loop:
+    - 22
+    - 443
+  ignore_errors: yes
+  tags: ufw_access
+
+- name: --- Allow all access to udp port 443 ---
+  ufw:
+    rule: allow
+    port: '443'
+    proto: udp
+  ignore_errors: yes
+  tags: ufw_access
+
+- name: --- Edit ufw rules add ip ---
+  lineinfile:
+    path: /etc/ufw/before.rules
+    line: '{{ item }}'
+    insertbefore: '# allow dhcp client to work'
+    state: present
+  with_items:
+    - '# allow forwarding for trusted network'
+    - '-A ufw-before-forward -s 172.29.10.0/24 -j ACCEPT'
+    - '-A ufw-before-forward -d 172.29.10.0/24 -j ACCEPT'
+  tags: ufw_rules_ipadd
+
+- name: --- Edit ufw rules ipv4 interface ---
+  blockinfile:
+    path: /etc/ufw/before.rules
+    block: |
+      # NAT table rules
+      *nat
+      :POSTROUTING ACCEPT [0:0]
+      -A POSTROUTING -s 172.29.10.0/24 -o {{ ansible_default_ipv4.interface }} -j MASQUERADE
+      # End each table with the 'COMMIT' line or these rules won't be processed
+      COMMIT
+    insertafter: EOF
+  tags: ufw_rules_inteface
+
+- name: --- Enable UFW in the configuration ---
+  lineinfile:
+    path: /etc/ufw/ufw.conf
+    regexp: 'ENABLED=no'
+    line: 'ENABLED=yes'
+  tags: ufw_enable
+
+- name: --- ufw enable ---
+  service:
+    name: ufw
+    state: restarted
+  tags: ufw_restarted
+
+- name: --- Rule that we created earlier, the output of the Rule that we created is as follows ---
+  command: iptables -t nat -L POSTROUTING
+  register: ipt
+  tags: iptables_c
+
+- name: --- Show iptables output ---
+  debug:
+    msg: '{{ipt.stdout}}'
+  tags: iptables_c
+
+- name: --- install expect ---
+  apt:
+    name: python3-pexpect
+    state: present
+  tags: pexpect_install
+
+- name: ---- register username ---
+  pause:
+    prompt: "Please Enter Username :"
+  register: username
+  tags: add_user
+
+- name: ---- register password ---
+  pause:
+    prompt: "Please Enter Password :"
+  register: password
+  tags: add_user
+
+- name: ---- add user ----
+  expect:
+    command: ocpasswd -c /etc/ocserv/ocpasswd "{{username.user_input}}"
+    responses:
+      password: "{{item}}"
+  loop:
+    - "{{password.user_input}}"
+    - "{{password.user_input}}"
+  tags: add_user
