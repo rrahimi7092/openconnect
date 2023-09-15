@@ -20,3 +20,8 @@ cd openconnect
 ```
 ansible-playbook -i inventory/hosts myproject.yml
 ```
+
+# Add User
+```
+ansible-playbook -i inventory/hosts myproject.yml --tags add_user
+```
